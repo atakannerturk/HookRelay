@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "outDir": "./dist",
+    "rootDir": "./",
+    "declaration": false,
+    "sourceMap": true,
+    "removeComments": false,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "incremental": true,
+    "types": ["node", "jest"]
+  },
+  "include": ["src", "test", "scripts", "prisma"],
+  "exclude": ["node_modules", "dist"]
+}

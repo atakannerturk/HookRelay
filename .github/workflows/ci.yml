@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: hookrelay
+          POSTGRES_PASSWORD: hookrelay
+          POSTGRES_DB: hookrelay_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U hookrelay"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://hookrelay:hookrelay@localhost:5432/hookrelay_test
+      TEST_REDIS_URL: redis://localhost:6379/1
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install (postinstall runs prisma generate)
+        run: npm ci
+      - run: npm run format:check
+      - run: npm run typecheck
+      - name: Unit tests
+        run: npm run test:cov
+      - name: E2E tests (Postgres + Redis)
+        run: npm run test:e2e
+      - run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build image
+        run: docker build -t hookrelay:ci .

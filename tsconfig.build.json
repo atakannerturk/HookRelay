@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "types": ["node"],
+    // nest build deletes dist; with incremental on, the leftover .tsbuildinfo in the
+    // project root says "nothing changed" and an empty dist is produced.
+    "incremental": false
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "test", "**/*.spec.ts"]
+}

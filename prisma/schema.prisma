@@ -1,0 +1,139 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "cjs"
+  // Extensionless imports for CommonJS + Jest
+  importFileExtension = ""
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// How an incoming webhook is signed (selects the verification strategy).
+enum SignatureScheme {
+  GITHUB
+  STRIPE
+  GENERIC
+}
+
+/// Aggregate state of an event, derived from its deliveries.
+enum EventStatus {
+  /// At least one delivery is still being attempted.
+  PENDING
+  /// Every delivery succeeded.
+  DELIVERED
+  /// Nothing is in flight and at least one delivery ended up in the dead-letter list.
+  FAILED
+  /// The source had no active destination; nothing to deliver.
+  SKIPPED
+}
+
+/// Lifecycle of a single (event, destination) delivery:
+/// PENDING -> SUCCEEDED | DEAD (dead-letter)
+enum DeliveryStatus {
+  PENDING
+  SUCCEEDED
+  DEAD
+}
+
+/// An external system that sends webhooks, received at POST /hooks/:name.
+model Source {
+  id        String          @id @default(uuid()) @db.Uuid
+  name      String          @unique
+  scheme    SignatureScheme @default(GENERIC)
+  /// Shared secret the provider signs its requests with.
+  secret    String
+  createdAt DateTime        @default(now()) @map("created_at")
+
+  destinations Destination[]
+  events       Event[]
+
+  @@map("sources")
+}
+
+/// A URL that receives the events of a source.
+model Destination {
+  id        String   @id @default(uuid()) @db.Uuid
+  sourceId  String   @map("source_id") @db.Uuid
+  url       String
+  /// Signs outgoing requests (X-HookRelay-Signature).
+  secret    String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  source     Source     @relation(fields: [sourceId], references: [id])
+  deliveries Delivery[]
+
+  @@index([sourceId])
+  @@map("destinations")
+}
+
+/// A webhook as it was received. The body is stored untouched and forwarded as-is.
+model Event {
+  id          String      @id @default(uuid()) @db.Uuid
+  sourceId    String      @map("source_id") @db.Uuid
+  /// Provider event id (or a hash of the body); the idempotency key.
+  externalId  String      @map("external_id")
+  eventType   String?     @map("event_type")
+  status      EventStatus @default(PENDING)
+  contentType String      @map("content_type")
+  headers     Json
+  payload     String
+  receivedAt  DateTime    @default(now()) @map("received_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  source     Source     @relation(fields: [sourceId], references: [id])
+  deliveries Delivery[]
+
+  @@unique([sourceId, externalId])
+  @@index([status, receivedAt(sort: Desc)])
+  @@index([receivedAt(sort: Desc)])
+  @@map("events")
+}
+
+model Delivery {
+  id             String         @id @default(uuid()) @db.Uuid
+  eventId        String         @map("event_id") @db.Uuid
+  destinationId  String         @map("destination_id") @db.Uuid
+  status         DeliveryStatus @default(PENDING)
+  /// Attempts in the current round; reset on replay.
+  attempts       Int            @default(0)
+  /// Incremented on every manual replay; part of the queue job id.
+  replayCount    Int            @default(0) @map("replay_count")
+  nextAttemptAt  DateTime?      @map("next_attempt_at")
+  lastStatusCode Int?           @map("last_status_code")
+  lastError      String?        @map("last_error")
+  deliveredAt    DateTime?      @map("delivered_at")
+  /// When the delivery was moved to the dead-letter list.
+  deadAt         DateTime?      @map("dead_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  event       Event             @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  destination Destination       @relation(fields: [destinationId], references: [id])
+  attemptLogs DeliveryAttempt[]
+
+  @@unique([eventId, destinationId])
+  @@index([status, nextAttemptAt])
+  @@map("deliveries")
+}
+
+/// A single HTTP request made to a destination.
+model DeliveryAttempt {
+  id          String   @id @default(uuid()) @db.Uuid
+  deliveryId  String   @map("delivery_id") @db.Uuid
+  /// Attempt number within the round (1..max).
+  number      Int
+  replayCount Int      @map("replay_count")
+  statusCode  Int?     @map("status_code")
+  error       String?
+  durationMs  Int      @map("duration_ms")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  delivery Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryId, createdAt])
+  @@map("delivery_attempts")
+}

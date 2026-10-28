@@ -1,0 +1,105 @@
+name: hookrelay
+
+x-app-env: &app-env
+  DATABASE_URL: postgresql://hookrelay:hookrelay@postgres:5432/hookrelay
+  REDIS_URL: redis://redis:6379
+  ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
+  LOG_JSON: 'true'
+
+x-app-deps: &app-deps
+  migrate:
+    condition: service_completed_successfully
+  redis:
+    condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: hookrelay
+      POSTGRES_PASSWORD: hookrelay
+      POSTGRES_DB: hookrelay
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U hookrelay -d hookrelay']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    # AOF: queued jobs survive a Redis restart.
+    # noeviction: BullMQ keys must never be evicted silently when memory is full (required by BullMQ).
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    ports:
+      - '6379:6379'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # One-off: applies migrations and creates the demo sources/destinations.
+  migrate:
+    build:
+      context: .
+      target: build
+    command: ['sh', '-c', 'npx prisma migrate deploy && npx prisma db seed']
+    environment:
+      DATABASE_URL: postgresql://hookrelay:hookrelay@postgres:5432/hookrelay
+      SEED_DESTINATION_URL: http://receiver:4000/webhook
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build: .
+    environment:
+      <<: *app-env
+      # The API only receives and enqueues; a separate worker process delivers.
+      WORKER_ENABLED: 'false'
+    ports:
+      - '3000:3000'
+    depends_on: *app-deps
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  worker:
+    build: .
+    command: ['node', 'dist/worker.js']
+    environment:
+      <<: *app-env
+      WORKER_ENABLED: 'true'
+    depends_on: *app-deps
+    # Under load: docker compose up --scale worker=3
+    restart: unless-stopped
+
+  # Demo destination: logs incoming deliveries and answers 500 at FAIL_RATE.
+  receiver:
+    build:
+      context: .
+      target: build
+    command: ['npx', 'tsx', 'scripts/mock-receiver.ts']
+    environment:
+      PORT: '4000'
+      FAIL_RATE: ${RECEIVER_FAIL_RATE:-0}
+    ports:
+      - '4000:4000'
+
+volumes:
+  pgdata:
+  redisdata:

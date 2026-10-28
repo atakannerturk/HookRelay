@@ -1,0 +1,59 @@
+{
+  "name": "hookrelay",
+  "version": "1.0.0",
+  "description": "Receives, verifies, queues and reliably forwards webhooks",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "postinstall": "prisma generate",
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "start:worker": "node dist/worker.js",
+    "dev": "nest start --watch",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "jest --selectProjects unit",
+    "test:cov": "jest --selectProjects unit --coverage",
+    "test:e2e": "node --experimental-vm-modules node_modules/jest/bin/jest.js --selectProjects e2e --runInBand",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:seed": "prisma db seed",
+    "receiver": "tsx scripts/mock-receiver.ts",
+    "send": "tsx scripts/send-webhook.ts",
+    "loadtest": "tsx scripts/load-test.ts"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.2.8",
+    "@nestjs/core": "^11.2.8",
+    "@nestjs/platform-express": "^11.2.8",
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "bullmq": "^5.81.5",
+    "express": "^5.3.0",
+    "ioredis": "^5.11.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.24",
+    "@nestjs/testing": "^11.2.8",
+    "@types/autocannon": "^7.12.7",
+    "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.19.2",
+    "@types/supertest": "^7.2.1",
+    "autocannon": "^8.0.0",
+    "jest": "^30.5.2",
+    "prettier": "^3.9.10",
+    "prisma": "^7.10.1",
+    "supertest": "^7.3.1",
+    "ts-jest": "^29.4.15",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3"
+  }
+}
